@@ -1,3 +1,86 @@
+# SimpleClaudeMenuBar (archived)
+
+> **Archived 2026-11-18.** Claude Code's own status line now shows the same
+> numbers, session and weekly usage with reset times, at the bottom of every
+> Claude Code session, with nothing extra installed. Use that instead (below).
+> To remove the app:
+> `curl -fsSLO https://raw.githubusercontent.com/baldwinsung/homebrew-tap/main/uninstall-menubar-apps.sh && bash uninstall-menubar-apps.sh claude`
+
+## Instead: Claude Code status line
+
+Claude Code passes JSON to a status line command after each response,
+including `rate_limits.five_hour` and `rate_limits.seven_day` (`used_percentage`,
+and `resets_at` in Unix seconds). These are present on claude.ai Pro, Max and
+Ultra plans, after the first response of a session. Details:
+[code.claude.com/docs/en/statusline](https://code.claude.com/docs/en/statusline).
+
+Result:
+
+```
+Opus 5.5 · ctx 34% · 5h 35% (21:59) · 7d 73% (Thu 13:59)
+```
+
+model · context window used · 5-hour session used (resets at) · 7-day week used (resets at)
+
+**1. Install jq** (macOS 15 and later ships `/usr/bin/jq`; otherwise):
+
+```bash
+brew install jq
+```
+
+**2. Save the script** as `~/.claude/statusline.sh`:
+
+```bash
+#!/bin/bash
+# Claude Code status line: model · context used · 5-hour session · 7-day week
+# Reads the JSON Claude Code sends on stdin. Needs jq.
+jq -r '
+  def pct: if . == null then "–" else "\(. | floor)%" end;
+  def at(f): if . == null then "" else " (\(. | localtime | strftime(f)))" end;
+  [ .model.display_name,
+    "ctx \(.context_window.used_percentage | pct)",
+    (if .rate_limits.five_hour then
+       "5h \(.rate_limits.five_hour.used_percentage | pct)\(.rate_limits.five_hour.resets_at | at("%H:%M"))"
+     else empty end),
+    (if .rate_limits.seven_day then
+       "7d \(.rate_limits.seven_day.used_percentage | pct)\(.rate_limits.seven_day.resets_at | at("%a %H:%M"))"
+     else empty end)
+  ] | join(" · ")'
+```
+
+```bash
+chmod +x ~/.claude/statusline.sh
+```
+
+**3. Point Claude Code at it** in `~/.claude/settings.json` (merge into the
+existing object):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh",
+    "padding": 0
+  }
+}
+```
+
+**4. Start a new Claude Code session** and send one message. The 5h/7d parts
+appear after the first response; before that only model and context show.
+
+**Test the script without Claude Code:**
+
+```bash
+echo '{"model":{"display_name":"Opus"},"context_window":{"used_percentage":12},"rate_limits":{"five_hour":{"used_percentage":35,"resets_at":'$(($(date +%s)+3600))'}}}' | ~/.claude/statusline.sh
+```
+
+You can also ask Claude Code to do steps 2 and 3: run `/statusline` and
+describe what you want shown.
+
+---
+
+The original README follows, for reference.
+
 # SimpleClaudeMenuBar
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
